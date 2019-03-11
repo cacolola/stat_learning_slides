@@ -1692,10 +1692,10 @@ You might remember that each of these terms has a name:</p>
 <div class="slideContent small-code" >
 <p>Bayes&#39;s rule:<br/>
 \[ 
-P(y_i = k \mid x_i) = \frac{P(y_i = k) \cdot P(x_i \mid y_i = k)}{P(x_i)}
+P(y = k \mid x) = \frac{P(y = k) \cdot P(x \mid y = k)}{P(x)}
  \]</p>
 
-<p>\( P(y_i = k) \) is the prior probability for class \( k \).  We usually get this from the raw class frequencies in the training data.  For example:</p>
+<p>\( P(y = k) \) is the prior probability for class \( k \).  We usually get this from the raw class frequencies in the training data.  For example:</p>
 
 <pre><code class="r">table(fgl[train_ind,]$type) %&gt;% prop.table
 </code></pre>
@@ -1713,12 +1713,339 @@ P(y_i = k \mid x_i) = \frac{P(y_i = k) \cdot P(x_i \mid y_i = k)}{P(x_i)}
 <div class="slideContent small-code" >
 <p>Bayes&#39;s rule:<br/>
 \[ 
-P(y_i = k \mid x_i) = \frac{P(y_i = k) \cdot P(x_i \mid y_i = k)}{P(x_i)}
+P(y = k \mid x) = \frac{P(y = k) \cdot P(x \mid y = k)}{P(x)}
  \]</p>
 
-<p>The hard part is estimating the likelihood \( P(x_i \mid y_i = k) \).  In words: how likely is it that we would have observed feature vector \( x_i \) if the true class label were \( k \)?</p>
+<p>\( P(x) \) is the marginal probability of observing feature vector \( x \).  Notice it doesn&#39;t depend on \( k \)!  It&#39;s the same number for all classes.</p>
+
+<p>Thus we usually write the posterior probabilities up to this constant of proportionality, without bothering to compute it:
+\[ 
+P(y = k \mid x) \propto P(y = k) \cdot P(x \mid y = k)
+ \]
+(Note: often we do the actual computations on a log scale instead.)</p>
+
+</div>
+
+</section>
+<section data-transition="none" data-transition-speed="default">
+<h3>Bayes&#x27; Rule for classification</h3>
+<div class="slideContent small-code" >
+<p>Bayes&#39;s rule:<br/>
+\[ 
+P(y = k \mid x) = \frac{P(y = k) \cdot P(x \mid y = k)}{P(x)}
+ \]</p>
+
+<p>The hard part is estimating the likelihood \( P(x \mid y = k) \).  In words: how likely is it that we would have observed feature vector \( x \) if the true class label were \( k \)?</p>
 
 <p>This is like regression in reverse!  See <code>congress109_bayes.r</code> for a teaser example.  </p>
+
+</div>
+
+</section>
+<section data-transition="none" data-transition-speed="default">
+<h3>Naive Bayes</h3>
+<div class="slideContent" >
+<p>Recall that \( x = (x_1, x_2, \ldots, x_p) \) is a vector of \( p \) features.  Our first strategy for estimating \( P(x \mid y = k) \) is called &ldquo;Naive Bayes.&rdquo;</p>
+
+<p>It&#39;s &ldquo;naive&rdquo; because we make the simplifying assumption that <em>every feature \( x_j \) is independent</em> of all other features:
+\[ 
+\begin{aligned}
+P(x \mid y = k) &= P(x_{1}, x_{2}, \ldots, x_{p} \mid y = k) \\
+&= \prod_{j=1}^p P(x_{j} \mid y = k) \quad \mbox{(independence)}
+\end{aligned}
+ \]</p>
+
+<p>This simplifies the requirements of the problem: <em>just calculate the marginal distribution of the features,</em> i.e. \( P(x_{j} \mid y = k) \) for all features \( j \) and classes \( k \).  </p>
+
+</div>
+
+</section>
+<section data-transition="none" data-transition-speed="default">
+<h3>Naive Bayes: a small example</h3>
+<div class="slideContent small-code" >
+<p>In <code>congress109.csv</code> we have data on all speeches given on the floor of the U.S. Congress during the 109th Congressional Session (January 3, 2005 to January 3, 2007).  </p>
+
+<p>Every row is a set of <em>phrase counts</em> associated with a single representative&#39;s speeches across the whole session. \( X_{ij} \) = number of times that rep \( i \) utter phrase \( j \) during a speech.       </p>
+
+<p>The target variable \( y \in \mbox{R, D} \) is the party affiliation of the representative.  </p>
+
+</div>
+
+</section>
+<section data-transition="none" data-transition-speed="default">
+<h3>Naive Bayes: a small example</h3>
+<div class="slideContent small-code" >
+<pre><code class="r"># read in data
+congress109 = read.csv(&quot;../data/congress109.csv&quot;, header=TRUE, row.names=1)
+congress109members = read.csv(&quot;../data/congress109members.csv&quot;, header=TRUE, row.names=1)
+</code></pre>
+
+<p>Focus on a few key phrases and a few famous pols:</p>
+
+<pre><code class="r">X_small = dplyr::select(congress109, minimum.wage, war.terror, tax.relief, hurricane.katrina)
+X_small[c(&#39;John McCain&#39;, &#39;Mike Pence&#39;, &#39;John Kerry&#39;, &#39;Edward Kennedy&#39;),]
+</code></pre>
+
+<pre><code>               minimum.wage war.terror tax.relief hurricane.katrina
+John McCain               0         27          0                14
+Mike Pence                0         12          1                11
+John Kerry               12         16         13                23
+Edward Kennedy          260          8          1                53
+</code></pre>
+
+</div>
+
+</section>
+<section data-transition="none" data-transition-speed="default">
+<h3>Naive Bayes: a small example</h3>
+<div class="slideContent small-code" >
+<p>Let&#39;s look at these counts summed across all members in each party:  </p>
+
+<pre><code class="r">y = congress109members$party
+
+# Sum phrase counts by party
+R_rows = which(y == &#39;R&#39;)
+D_rows = which(y == &#39;D&#39;)
+colSums(X_small[R_rows,])
+</code></pre>
+
+<pre><code>     minimum.wage        war.terror        tax.relief hurricane.katrina 
+              294               604               497               717 
+</code></pre>
+
+<pre><code class="r">colSums(X_small[D_rows,])
+</code></pre>
+
+<pre><code>     minimum.wage        war.terror        tax.relief hurricane.katrina 
+              767               237               176              1295 
+</code></pre>
+
+<p>So we get the sense that some phrases are &ldquo;more Republican&rdquo; and some &ldquo;more Democrat.&rdquo;  </p>
+
+</div>
+
+</section>
+<section data-transition="none" data-transition-speed="default">
+<h3>Naive Bayes: a small example</h3>
+<div class="slideContent small-code" >
+<p>To make this precise, let&#39;s build a simplified &ldquo;bag of phrases&rdquo; model for a Congressional speech:   </p>
+
+<ul>
+<li>Imagine that every phrase uttered in a speech is a random sample from a &ldquo;bag of phrases,&rdquo; where each phrase has its own probability. (<em>This is the Naive Bayes assumption of independence.</em>)</li>
+<li>Here the bag consists of just four phrases: &ldquo;minimum wage&rdquo;, &ldquo;war on terror&rdquo;, &ldquo;tax relief,&rdquo; and &ldquo;hurricane katrina&rdquo;.</li>
+<li>Each class (R or D) has its own probability vector associated with the phrases in the bag.<br/></li>
+</ul>
+
+</div>
+
+</section>
+<section data-transition="none" data-transition-speed="default">
+<h3>Naive Bayes: a small example</h3>
+<div class="slideContent small-code" >
+<p>We can estimate these probability vectors for each class from the phrase counts in the training data.  For Republicans:</p>
+
+<pre><code class="r">probhat_R = colSums(X_small[R_rows,])
+probhat_R = probhat_R/sum(probhat_R)
+probhat_R
+</code></pre>
+
+<pre><code>     minimum.wage        war.terror        tax.relief hurricane.katrina 
+        0.1392045         0.2859848         0.2353220         0.3394886 
+</code></pre>
+
+<p>And for Democrats:</p>
+
+<pre><code class="r">probhat_D = colSums(X_small[D_rows,])
+probhat_D = probhat_D/sum(probhat_D)
+probhat_D
+</code></pre>
+
+<pre><code>     minimum.wage        war.terror        tax.relief hurricane.katrina 
+       0.30989899        0.09575758        0.07111111        0.52323232 
+</code></pre>
+
+</div>
+
+</section>
+<section data-transition="none" data-transition-speed="default">
+<h3>Naive Bayes: a small example</h3>
+<div class="slideContent small-code" >
+<p>Let&#39;s now look at some particular member of Congress and try to build the &ldquo;likelihood&rdquo; for his or her phrase counts</p>
+
+<pre><code class="r">X_small[&#39;Sheila Jackson-Lee&#39;,]
+</code></pre>
+
+<pre><code>                   minimum.wage war.terror tax.relief hurricane.katrina
+Sheila Jackson-Lee           11         15          3                66
+</code></pre>
+
+<p>Are Sheila Jackon-Lee&#39;s phrase counts \( x = (11, 15, 3, 66) \) more likely under the Republican or Democrat probability vector?  </p>
+
+</div>
+
+</section>
+<section data-transition="none" data-transition-speed="default">
+<h3>Naive Bayes: a small example</h3>
+<div class="slideContent small-code" >
+<p>Recall the Republican vector:</p>
+
+<pre><code>     minimum.wage        war.terror        tax.relief hurricane.katrina 
+        0.1392045         0.2859848         0.2353220         0.3394886 
+</code></pre>
+
+<p>Under this probability vector:<br/>
+\[ 
+\begin{aligned}
+P(x \mid y = \mbox{R}) &= P(x_1 = 11 \mid y = \mbox{R}) \\
+& \times P(x_2 = 15 \mid y = \mbox{R}) \\
+& \times P(x_3 = 3 \mid y = \mbox{R}) \\
+& \times P(x_4 = 66 \mid y = \mbox{R}) \\
+&= (0.1392)^{11} \cdot (0.2860)^{15} \cdot (0.2353)^{3} \cdot (0.3395)^{66} \\
+&= 3.765 \times 10^{-51}
+\end{aligned}
+ \]</p>
+
+</div>
+
+</section>
+<section data-transition="none" data-transition-speed="default">
+<h3>Naive Bayes: a small example</h3>
+<div class="slideContent small-code" >
+<p>Now recall the Democratic vector:</p>
+
+<pre><code>     minimum.wage        war.terror        tax.relief hurricane.katrina 
+       0.30989899        0.09575758        0.07111111        0.52323232 
+</code></pre>
+
+<p>Under this probability vector:<br/>
+\[ 
+\begin{aligned}
+P(x \mid y = \mbox{D}) &= P(x_1 = 11 \mid y = \mbox{D}) \\
+& \times P(x_2 = 15 \mid y = \mbox{D}) \\
+& \times P(x_3 = 3 \mid y = \mbox{D}) \\
+& \times P(x_4 = 66 \mid y = \mbox{D}) \\
+&= (0.3099)^{11} \cdot (0.0958)^{15} \cdot (0.0711)^{3} \cdot (0.5232)^{66} \\
+&= 1.293 \times 10^{-43}
+\end{aligned}
+ \]</p>
+
+</div>
+
+</section>
+<section data-transition="none" data-transition-speed="default">
+<h3>Naive Bayes: a small example</h3>
+<div class="slideContent small-code" >
+<p>Because these numbers are so tiny, it&#39;s much safer to work on a log scale:
+\[ 
+\log P(x \mid y = k) = \sum_{j=1}^p x_{j} \log p^{(k)}_{j}
+ \]
+where \( p^{(k)}_{j} \) is the jth entry in the probability vector for class \( k \).  </p>
+
+<pre><code class="r">x_try = X_small[&#39;Sheila Jackson-Lee&#39;,]
+sum(x_try * log(probhat_R))
+</code></pre>
+
+<pre><code>[1] -116.1083
+</code></pre>
+
+<pre><code class="r">sum(x_try * log(probhat_D))
+</code></pre>
+
+<pre><code>[1] -98.75633
+</code></pre>
+
+</div>
+
+</section>
+<section data-transition="none" data-transition-speed="default">
+<h3>Naive Bayes: a small example</h3>
+<div class="slideContent small-code" >
+<p>Let&#39;s use Bayes&#39; rule (posterior \( \propto \) prior times likelihood) to put this together with our prior, estimated using the empirical class frequencies:</p>
+
+<pre><code class="r">table(y) %&gt;% prop.table
+</code></pre>
+
+<pre><code>y
+          D           I           R 
+0.457466919 0.003780718 0.538752363 
+</code></pre>
+
+<p>So:
+\[ 
+P(R \mid x) \propto 0.539 \cdot (3.765 \times 10^{-51})
+ \]
+and
+\[ 
+P(D \mid x) \propto 0.457 \cdot (1.293 \times 10^{-43})
+ \]</p>
+
+</div>
+
+</section>
+<section data-transition="none" data-transition-speed="default">
+<h3>Naive Bayes: a small example</h3>
+<div class="slideContent small-code" >
+<ul>
+<li><p>Turn this into a set of probabilities by normalizing, i.e. dividing by the sum across all classes:<br/>
+\[ 
+\begin{aligned}
+P(D \mid x) &= \frac{0.457 \cdot (1.293 \times 10^{-43})}{0.457 \cdot (1.293 \times 10^{-43} + 0.539 \cdot (3.765 \times 10^{-51})} \\
+& \approx 1
+\end{aligned}
+ \]</p></li>
+<li><p>So:  </p>
+
+<ol>
+<li>Sheila Jackson-Lee is probably a Democrat, according to our model.<br/></li>
+<li>The data completely overwhelm the prior!  This is often the case in Naive Bayes models.<br/></li>
+</ol></li>
+</ul>
+
+</div>
+
+</section>
+<section data-transition="none" data-transition-speed="default">
+<h3>Naive Bayes: a bigger example</h3>
+<div class="slideContent small-code" >
+<p>Turn to <code>congress109_bayes.R</code> to see a larger example of Naive Bayes classification, where we fit our model with all 1000 phrase counts.    </p>
+
+</div>
+
+</section>
+<section data-transition="none" data-transition-speed="default">
+<h3>Naive Bayes: summary</h3>
+<div class="slideContent" >
+<ul>
+<li>Works by directly modeling \( P(x \mid y) \), versus \( P(y \mid x) \) as in logit.<br/></li>
+<li>Simple and easy to compute, and therefore scalable to very large data sets and classification problems.<br/></li>
+<li>Works even more with feature variables \( P \) than observations \( N \).<br/></li>
+<li>Often too simple: the &ldquo;naive&rdquo; assumption of independence really is a drastic simplification.<br/></li>
+<li>The resulting probabilities are useful for classification purposes, but often not believeable as probabilities.<br/></li>
+<li>Most useful when the features \( x \) are categorical variables (like phrase counts!)  Very common in text analysis.<br/></li>
+</ul>
+
+</div>
+
+</section>
+<section data-transition="none" data-transition-speed="default">
+<h3>Linear discriminant analysis</h3>
+<div class="slideContent" >
+<p>Linear discriminant analysis (LDA) has a similar motivation to Naive Bayes.
+\[ 
+P(y = k \mid x) \propto p(y = k) \cdot p(x \mid y=k)
+ \]</p>
+
+<p>There are two key differences:</p>
+
+<ul>
+<li>LDA relaxes the assumption of independence.</li>
+<li><p>We explicitly model the multivariate <em>joint distibution</em> for vector \( x \) as a multivariate normal distribution:
+\[ 
+p(x \mid y=k) = (2 \pi)^{-p/2} \cdot |\Sigma_k|^{-1/2} \exp \left\{(x-\mu_k)'\Sigma_k^{-1} (x-\mu_k)  \right\}
+ \]
+Written more concisely: \( (x \mid y=k) \sim N(\mu_k, \Sigma_k) \), where \( (\mu_k, \Sigma_k) \) are the mean vector and covariance matrix for class \( k \).  </p></li>
+<li><p>See <code>glass_LDA.R</code></p></li>
+</ul>
 
 </div>
 
