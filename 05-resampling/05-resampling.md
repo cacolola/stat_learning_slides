@@ -254,3 +254,313 @@ K-fold CV: in class
     3. Re-run your script several times to get different allocations of data points into folds.  Each time plot RMSE versus $M$.  Does the plot change drastically from one run to the next?  
     
     
+The bootstrap
+=============  
+
+So we believe that $y_i = f(x_i) + \epsilon_i$, and we have our estimate $\hat{f}(x)$... How can we quantify our uncertainty for this estimate?  
+
+Fundamental frequentist thought experiment: "How might $\hat{f}(x)$ have been different if I'd gotten different data just by chance?"  
+
+But what does "different data" actually mean?  
+- a different sample (of size $N$) of $(x_i, y_i)$ pairs from the same population?  
+- a different set of residuals?  
+- a different realization of the same underlying random process/phenomenon?  
+
+The bootstrap
+=============  
+
+There's a version the bootstrap for all three situations:  
+- a different sample (of size $N$) of $(x_i, y_i)$ pairs from the same population?    __The nonparametric bootstrap__  
+- a different set of residuals?  __The residual-resampling bootstrap__  
+- a different realization of the same underlying random process/phenomenon?  __The parametric bootstrap__  
+
+Let's see this three versions of the bootstrap one by one.  
+
+
+The nonparametric bootstrap
+=============  
+
+If you've seen the bootstrap before, it was probably this one!  
+
+- Question: "how might my estimate $\hat{f}(x)$ have been different if I'd seen a different sample of $(x_i, y_i)$ pairs from the same population?"  
+- Assumption: each $(x_i, y_i)$ is a random sample from a joint distribution $P(x, y)$ describing the population from which your sample was drawn.  
+- Problem: We don't know $P(x, y)$.  
+- Solution: Approximate $P(x, y)$ by $\hat{P}(x, y)$, the empirical joint distribution of the data in your sample.  
+- Key fact for implementation: sampling from $\hat{P}(x, y)$ is equivalent to sampling with replacement from the original sample.  
+
+
+The nonparametric bootstrap
+=============  
+
+This leads to the following algorithm.  
+
+For b = 1 to B:
+- Construct a sample from $\\hat{P}(x, y)$ (called a _bootstrapped sample_) by sampling $N$ pairs $(x_i, y_i)$ _with replacement_ from the original sample.  
+- Refit the model to each bootstrapped sample, giving you $\hat{f}^{(b)}$.  
+
+This gives us $B$ draws from the bootstrapped sampling distribution of $\hat{f}(x)$.  
+
+Use these draws to form (approximate) confidence intervals and standard errors for $f(x)$.  
+
+An example
+=============  
+class: small-code
+
+
+```r
+library(tidyverse)
+loadhou = read.csv('../data/loadhou.csv')
+
+ggplot(loadhou) + geom_point(aes(x=KHOU, y=COAST), alpha=0.1) + 
+  theme_set(theme_bw(base_size=18)) 
+```
+
+<img src="05-resampling-figure/unnamed-chunk-5-1.png" title="plot of chunk unnamed-chunk-5" alt="plot of chunk unnamed-chunk-5" style="display: block; margin: auto;" />
+
+
+An example
+=============  
+class: small-code
+
+Suppose we want to know $f(5)$ and $f(25)$, i.e. the expected values of `COAST` when `KHOU = 5` and `KHOU = 25`, respectively.  Let's bootstrap a KNN model, with $K=40$:  
+
+
+```r
+library(mosaic)
+library(FNN)
+
+X_test = data.frame(KHOU=c(5,25))
+boot20 = do(500)*{
+  loadhou_boot = resample(loadhou)  # construct a boostrap sample
+  X_boot = select(loadhou_boot, KHOU)
+  y_boot = select(loadhou_boot, COAST)
+  knn20_boot = knn.reg(X_boot, X_test, y_boot, k=40)
+  knn20_boot$pred
+}
+head(boot20, 3)  # first column is f(5), second is f(25)  
+```
+
+```
+        V1       V2
+1 10483.51 12064.16
+2 10389.39 11782.52
+3 10732.84 11793.46
+```
+
+An example
+=============  
+class: small-code
+
+Now we can calculate standard errors and/or confidence intervals.  
+
+- Standard errors: take the standard deviation of each column.  
+
+```r
+se_hat = apply(boot20, 2, sd)
+se_hat
+```
+
+```
+      V1       V2 
+159.8669 155.0356 
+```
+
+- Confidence intervals: calculate quantiles for each column
+
+```r
+apply(boot20, 2, quantile, probs=c(0.025, 0.975))  
+```
+
+```
+            V1       V2
+2.5%  10346.91 11534.12
+97.5% 10953.81 12124.75
+```
+
+An example
+=============  
+class: small-code
+
+- Shortcut: 
+
+```r
+confint(boot20)
+```
+
+```
+  name    lower    upper level     method estimate
+1   V1 10346.91 10953.81  0.95 percentile 10638.78
+2   V2 11534.12 12124.75  0.95 percentile 11906.23
+```
+
+Spaghetti plot: using base R graphics  
+=============  
+class: small-code  
+
+
+```r
+X_test = data.frame(KHOU=seq(0, 35, by=0.1))
+plot(COAST ~ KHOU, data=loadhou)
+for(i in 1:500) {
+  loadhou_boot = resample(loadhou)  # construct a boostrap sample
+  X_boot = select(loadhou_boot, KHOU)
+  y_boot = select(loadhou_boot, COAST)
+  knn20_boot = knn.reg(X_boot, X_test, y_boot, k=40)
+  knn20_boot$pred
+  lines(X_test$KHOU,  knn20_boot$pred, col=rgb(1, 0, 0, 0.1))
+}
+```
+
+<img src="05-resampling-figure/unnamed-chunk-10-1.png" title="plot of chunk unnamed-chunk-10" alt="plot of chunk unnamed-chunk-10" style="display: block; margin: auto;" />
+
+
+The residual-resampling bootstrap
+=============  
+
+- Question: "how might my estimate $\hat{f}(x)$ have been different if the error terms/residuals had been different?"  
+- Assumption: each residual $e_i$ is a random sample from a probability distribution $P(e)$ describing the noise in your data set.      
+- Problem: We don't know $P(e)$.  
+- Solution: Approximate $P(e)$ by $\\hat{P}(e)$, the empirical distribution of the residuals from your fitted model.     
+- Key fact for implementation: sampling from $\hat{P}(e)$ is equivalent to sampling with replacement from residuals of your fitted model.  
+
+
+The residual-resampling bootstrap  
+=============  
+
+This leads to the following algorithm.  First fit the model, yielding
+$$
+y_i = \hat{f}(x_i) + e_i
+$$
+
+Then, for b = 1 to B:
+- Construct a sample from $\\hat{P}(e)$ by sampling $N$ residuals $e^{(b)}_i$ _with replacement_ from the original residuals $e_1, \ldots, e_N$.  
+- Construct synthetic outcomes $y_i^{(b)}$ by setting 
+$$
+y_i^{(b)} = \hat{f}(x_i) + e^{(b)}_i
+$$
+- Refit the model to the $(x_i, y_i^{(b)})$ pairs, yielding $\hat{f}^{(b)}$.  
+
+
+An example
+=============  
+class: small-code
+
+
+```r
+ethanol = read.csv('ethanol.csv')
+ggplot(ethanol) + geom_point(aes(x=E, y=NOx)) + 
+  theme_set(theme_bw(base_size=18)) 
+```
+
+<img src="05-resampling-figure/unnamed-chunk-11-1.png" title="plot of chunk unnamed-chunk-11" alt="plot of chunk unnamed-chunk-11" style="display: block; margin: auto;" />
+
+Key fact: the $(x_i, y_i)$ are not random samples here! _The $x_i$ points are fixed as part of the experimental design._  
+
+
+An example
+=============  
+class: small-code
+
+Let's quantify uncertainty for $f(0.7)$ and $f(0.95)$, under 5th-order polynomial model, via the residual resampling bootstrap.  
+
+First, let's look at the empirical distribution of the residuals:  
+
+```r
+poly5 = lm(NOx ~ poly(E, 5), data=ethanol)
+yhat = fitted(poly5)
+evector = ethanol$NOx - yhat  # empirical distribution of residuals
+```
+
+An example
+=============  
+class: small-code
+
+
+```r
+hist(evector, 20)
+```
+
+<img src="05-resampling-figure/unnamed-chunk-13-1.png" title="plot of chunk unnamed-chunk-13" alt="plot of chunk unnamed-chunk-13" style="display: block; margin: auto;" />
+
+This is our estimate $\\hat{P}(e)$ for the probability distribution of the residuals.  
+
+
+
+An example
+=============  
+class: small-code
+
+Now we bootstrap:  
+
+```r
+X_test = data.frame(E=c(0.7, 0.95))
+boot5 = do(500)*{
+  e_boot = resample(evector)
+  y_boot = yhat + e_boot  # construct synthetic outcomes
+  ethanol_boot = ethanol
+  ethanol_boot$NOx = y_boot  # substitute real outcomes with synthetic ones
+  poly5_boot = lm(NOx ~ poly(E, 5), data=ethanol_boot)
+  fhat_boot = predict(poly5_boot, X_test)
+  fhat_boot
+}
+head(boot5, 3)  # first column is f(0.7), second is f(0.95)  
+```
+
+```
+        X1       X2
+1 1.520835 3.592387
+2 1.589200 3.472739
+3 1.541575 3.556114
+```
+
+
+An example
+=============  
+class: small-code
+
+As before, we can get standard errors and/or confidence intervals.  
+
+- Standard errors:  
+
+```r
+se_hat = apply(boot5, 2, sd)
+se_hat
+```
+
+```
+        X1         X2 
+0.07976190 0.07544626 
+```
+
+- Confidence intervals: calculate quantiles for each column  
+
+```r
+apply(boot5, 2, quantile, probs=c(0.025, 0.975))  
+```
+
+```
+            X1       X2
+2.5%  1.355337 3.378689
+97.5% 1.670854 3.694560
+```
+
+
+The parametric bootstrap
+=============  
+
+- Question: "how might my estimate $\hat{f}(x)$ have been different if my outcomes were a different realization from the same underlying conditional distribution $P(y_i \mid x_i)$?  
+- Assumption: each outcome $y_i$ is a random sample from a conditional probability distribution $P(y \mid x)$.    
+- Problem: We don't know $P(y \mid x)$.  
+- Solution: Approximate $P(y \mid x)$ by $\hat{P}(y \mid x)$, the family of conditional distributions estimated from your sample.  
+- Key fact for implementation: $\hat{P}(y \mid x)$ is a parametric probability model parametrized by $\hat{f}(x)$, the fitted function.  
+
+
+The parametric bootstrap
+=============  
+
+Example: see `predimed_bootstrap.R`
+
+In class:  
+- return to `brca.csv`  
+- Consider the conditional probability P(cancer | risk factors) _before_ screening (i.e. not using the `recall` variable).  Fit this using a logit model on the full data set.  
+- Then address the question: are there some patients for whom  P(cancer | risk factors) is much more uncertain than others?  
