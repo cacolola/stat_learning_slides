@@ -329,3 +329,138 @@ We've seen how to do this with `model.matrix` for dense matrices. The sparse ver
 We'll walk through the example in `semiconductor.R`... 
 
 
+Dimensionality reduction
+=====
+
+Basic idea: 
+- Summarize the information in the $p$ original features into a smaller set of $k$ _summary features_ ($k < p$).
+- Then try to predict $y$ using the derived features.  
+- Summaries are often linear combinations of the original variables.  
+
+This is useful when:  
+- there are still too many variables (the haystack is too big).    
+- and/or the features are highly correlated and it doesn't make sense to just select a handful of them.  
+
+
+Dimensionality reduction: example
+=====
+
+This poses a pretty substantial estimation problem:
+- only 12 months per year, and perhaps 40 years of data.  
+- Yet _thousands_ of other stocks in the market.  
+
+Could do variable selection from among these thousands of variables, but remember: each extra bit of hay we throw onto the haystack makes it harder to find the needles!  
+
+
+Dimensionality reduction: example
+=====
+
+Suppose we want to build a model for how the returns on Apple's stock depend on all other stocks in the market.  So let
+- $y_t$ = return on Apple stock in month $t$.
+- $x_{jt}$ = return on other stock $j$ in month $t$.  
+
+A linear model would say
+$$
+E(y_t) = \alpha + \sum_{j=1}^p \beta_j x_{jt} + e_t  
+$$
+
+Dimensionality reduction: example
+=====
+
+So we try dimensionality reduction:  
+$$
+E(y_t) = \alpha + \beta m_t + e_t
+$$
+where
+- $y_t$ is the return on a stock of interest (e.g. Apple) in period $t$  
+- $m_t$ is the "market return", i.e. the weighted-average return on all other stocks:  
+$$
+m_t = \sum_{j=1}^p w_j x_{jt} \, .
+$$
+(The weight $w_j$ is proportional to the size of the company.)  
+
+
+Dimensionality reduction: example
+=====
+
+In finance this is called the "single index" model, a variant of the "capital asset pricing model".
+
+See, e.g.,  https://finance.yahoo.com/quote/AAPL
+
+Look for their estimate of $\beta$!  
+
+
+Dimensionality reduction
+=====
+
+The single-index model filter $p$ variables into 1 variable, via a single linear combination:
+$$
+m = \sum_{j=1}^p w_j x_{j} \, .
+$$
+
+In the case of a single-index model for stocks, it is natural to take a market-weighted linear combination of all stocks.  The weights come from economics, not statistics.  
+
+But what if we don't have a natural or "obvious" set of weights?  
+
+
+Dimensionality reduction: PCA
+=====
+
+A very popular way to proceed here is Principal Components Analysis
+- PCA is a dimensionality reduction technique that tries to
+represent $p$ variables with a $k < p$ new variables.  
+- Like in the single-index model, these "new" variables are linear combinations of the original variables.
+- The hope is that a small number of them are able to effectively represent what is going on in the original data.
+- We'll study PCA in detail later.  For now, we'll use it as a black box "machine" for generating summary features.  
+
+
+PCA: some intuition
+=====
+
+In PCA, we extract $K$ summary variables from each feature vector $x_i$.  Each summary $k=1, \ldots, K$ is of the form:
+$$
+s_{ik} = \sum_{j=1}^p v_{jk} x_{ij}
+$$
+where $x_{ij}$ is original feature $j$, and $s_{ik}$ is summary feature $k$, for observation $i$.
+
+The coefficients $v_{jk}$ are the "loadings" or "weights" on the original variables.  The goal of PCA is to choose an "optimal" set of weights.  
+
+PCA: some intuition
+=====
+
+
+<img src="fig/pca_example.png" title="plot of chunk unnamed-chunk-1" alt="plot of chunk unnamed-chunk-1" width="500px" style="display: block; margin: auto;" />
+
+- The two variables x1 and x2 are very correlated. PC1 tells you almost
+everything that is going on in this dataset:
+$$
+s_{1} = 0.781 x_1 - 0.625 x_2
+$$
+- PCA will look for linear combinations of the original variables that
+account for most of their variability.  
+
+
+PCA: a simple example
+=====
+
+Data from 1970s Europe on consumption of 7 types of foods: red meat, white meat, eggs, milk, fish, cereals, starch, nuts, vegetables. 
+
+<img src="fig/pca_diet.png" title="plot of chunk unnamed-chunk-2" alt="plot of chunk unnamed-chunk-2" width="800px" style="display: block; margin: auto;" />
+
+Can you interpret the summaries?
+
+PCA: quick summary
+=====
+
+- PCA is a great way to "collapse" many features into few.
+
+- The choice of K (how many summaries) can be evaluated via the out-of-sample fit.  
+
+- The units of each summary variable are not interpretable in an absolute sense---only relative to each other.  
+
+- It's always a good idea to center the data before running PCA.
+
+- Much more on PCA later!  
+
+Let's see an example in `gasoline.R`.
+
